@@ -1,0 +1,730 @@
+---
+title: "2yp_prelim_graph"
+author: "Rui"
+date: "3/29/2021"
+output: html_document
+---
+
+# Data Preparation
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(caret)
+library(stargazer)
+library(broom)
+library(did)
+library(pscl)
+library(mfx)
+library(psych)
+library(rstatix)
+library(ggpubr)
+```
+
+```{r}
+df = read.csv('D:/2yp/cleaned_data/concat_210502.csv')
+df = df %>% 
+  mutate(twocp = ifelse(year>2015, 1, 0),
+         major_city = 1-minor_city,
+         first.treat = ifelse(major_city, 2016, 0),
+         twocp_cont = year-2016,
+         no_elig_ratio = pre_job_no/elig_pop,
+         base_level = ifelse(level==3, 1, 0))
+         #level0 = ifelse(level==0, 1, 0),
+         #level1 = ifelse(level==1, 1, 0),
+         #level2 = ifelse(level==2, 1, 0),
+         #level3 = ifelse(level==3, 1, 0),
+         #ethnic_all = ifelse(ethnic=='all', 1, 0),
+         #ethnic_minor = ifelse(ethnic=='minority', 1, 0),
+         #ethnic_han = ifelse(ethnic=='han', 1, 0)
+```
+```{r}
+
+hist(agg_depar$depar_gsr_m_ratio)
+```
+
+
+```{r}
+df_wo_police = df %>% filter(police==0)
+df_w_police = df %>% filter(police==1)
+
+df_wo_tibet = df %>% filter(region0_eng!='tibet')
+df_wo_xinjiang = df %>%  filter(region0_eng!='xinjiang')
+df_wo_police_tibet = df_wo_police %>%  filter(region0_eng!='tibet')
+df_wo_police_xinjiang = df_wo_police %>% filter(region0_eng!='xinjiang')
+
+#write.csv(df_wo_police_tibet,"C:/Users/lenovo/Desktop/prelim_graph/data/wo_police_tibet_210417_stata.csv", row.names = FALSE)
+```
+```{r}
+agg_depar = read.csv('D:/2yp/cleaned_data/agg_depar_210503.csv')
+agg_depar = agg_depar %>% 
+  mutate(twocp = ifelse(year>2015, 1, 0),
+         major_city = 1-minor_city,
+         first.treat = ifelse(major_city, 2016, 0),
+         twocp_cont = year-2016,
+         no_elig_ratio = pre_job_no/elig_pop,
+         base_level = ifelse(level>2, 1, 0))
+
+agg_pre = read.csv('D:/2yp/cleaned_data/agg_pre_210503.csv')
+agg_pre = agg_pre %>% 
+  mutate(twocp = ifelse(year>2015, 1, 0),
+         major_city = 1-minor_city,
+         first.treat = ifelse(major_city, 2016, 0),
+         twocp_cont = year-2016,
+         no_elig_ratio = pre_job_no/elig_pop) 
+```
+
+
+```{r}
+df_wo_police = df_wo_police %>% 
+  mutate(yr2014=ifelse(year==2014,1,0),
+         yr2015=ifelse(year==2015,1,0),
+         yr2016=ifelse(year==2016,1,0),
+         yr2017=ifelse(year==2017,1,0),
+         yr2018=ifelse(year==2018,1,0),
+         yr2019=ifelse(year==2019,1,0))
+df_wo_police_tibet = df_wo_police_tibet %>% 
+  mutate(yr2014=ifelse(year==2014,1,0),
+         yr2015=ifelse(year==2015,1,0),
+         yr2016=ifelse(year==2016,1,0),
+         yr2017=ifelse(year==2017,1,0),
+         yr2018=ifelse(year==2018,1,0),
+         yr2019=ifelse(year==2019,1,0))
+```
+
+```{r,echo=FALSE}
+  # df_wo_police %>%
+  # group_by(region1,year)
+  # summarize(count = n(),
+  #           sum_gsr_m_no = sum(gsr_m_no),
+  #           sum_gsr_f_no = sum(gsr_f_no),
+  #           sum_job_no = sum(job_no),
+  #           sum_gsr_m = sum(gsr_m),
+  #           sum_gsr_f = sum(gsr_f)) %>%
+  # mutate(major_city = 1-minor_city,
+  #        twocp = ifelse(year>2015, 1, 0),
+  #        gsr_m_por_ppl = sum_gsr_m_no*100/sum_job_no,
+  #        gsr_f_por_ppl = sum_gsr_f_no*100/sum_job_no,
+  #        gsr_m_por_job = sum_gsr_m*100/count,
+  #        gsr_f_por_job = sum_gsr_f*100/count)
+```
+
+# summary statistics
+
+```{r}
+df_wo_police_major = df_wo_police%>%filter(major_city==1)
+df_wo_police_minor = df_wo_police%>%filter(minor_city==1)
+#df_wo_police_minor2013 =  df_wo_police%>%filter(year == 2013 & major_city==0)
+stargazer(df_wo_police_minor, df_wo_police_major , summary=TRUE,style='aer')
+#t.test(job_no ~ major_city, data = df_wo_police)
+```
+
+```{r}
+mydata = df %>% dplyr::select(pop_minority_ratio, pop_total, avg_educ_total, major_city)
+
+mydata.long <- mydata %>%
+  pivot_longer(-major_city, names_to = "variables", values_to = "value")
+
+stat.test <- mydata.long %>%
+  group_by(variables) %>%
+  t_test(value ~ major_city) %>%
+stat.test
+
+```
+
+
+```{r}
+t_test = t.test(job_no ~ major_city, data = df_wo_police)
+t_test$estimate
+```
+
+# Prelim Graphs
+
+## Non-police jobs, by minority city
+
+```{r,echo=FALSE}
+police0minor = ggplot(NULL, aes(x=year)) + 
+  geom_line(data = df_sum[df_sum$police ==0 & df_sum$minor_city ==0,], aes(y = gsr_f_por_job,color='% of GSR female, majority'),size=1) +
+  geom_line(data = df_sum[df_sum$police ==0 & df_sum$minor_city ==0,], aes(y = gsr_m_por_job,color='% of GSR male, majority'),size=1) +
+  geom_line(data = df_sum[df_sum$police ==0 & df_sum$minor_city ==1,], aes(y = gsr_f_por_job,color='% of GSR female, minority'),size=1) +
+  geom_line(data = df_sum[df_sum$police ==0 & df_sum$minor_city ==1,], aes(y = gsr_m_por_job,color='% of GSR male, minority'),size=1) +
+  geom_vline(aes(xintercept=2017, color = 'UTCP enacted'),size=1)+
+  labs(title = "% of Gender Specific Requirement (GSR) non-police, 2013-2020", x = "Year", y = "% of GSR Jobs", color = 'Colors') 
+#  scale_color_manual(labels = c('% of gsr female, non-minority', '% of gsr male, non-minority'), values = c('navy', "darkred")) 
+
+police0minor
+```
+
+
+## Police jobs, by minority city
+
+
+```{r,echo=FALSE}
+police1minor = ggplot(NULL, aes(x=year)) + 
+  geom_line(data = df_sum[df_sum$police ==1 &df_sum$minor_city ==0,], aes(y = gsr_f_por_job,color='% of GSR female, non-minority'),size = 1) +
+  geom_line(data = df_sum[df_sum$police ==1 &df_sum$minor_city ==0,], aes(y = gsr_m_por_job,color='% of GSR male, non-minority'),size = 1) +
+  geom_line(data = df_sum[df_sum$police ==1 &df_sum$minor_city ==1,], aes(y = gsr_f_por_job,color='% of GSR female, minority'),size = 1) +
+  geom_line(data = df_sum[df_sum$police ==1 &df_sum$minor_city ==1,], aes(y = gsr_m_por_job,color='% of GSR male, minority'),size = 1) +
+  geom_vline(aes(xintercept=2017, color = 'Two Child Policy'),size=1)+
+  labs(title = "% of Gender Specific Requirement (GSR) police, 2013-2020", x = "Year", y = "% of GSR Jobs", color = "Color")
+#  scale_color_manual(labels = c('% of gsr female, non-minority', '% of gsr male, non-minority'), values = c('navy', "darkred"))
+  
+police1minor
+```
+
+
+```{r,echo=FALSE}
+minor = ggplot(NULL, aes(x=year)) + 
+  geom_line(data = df_sum1[df_sum1$minor_city ==0,], aes(y = gsr_f_por_job,color='% of GSR female, non-minority'),size = 1) +
+  geom_line(data = df_sum1[df_sum1$minor_city ==0,], aes(y = gsr_m_por_job,color='% of GSR male, non-minority'),size = 1) +
+  geom_line(data = df_sum1[df_sum1$minor_city ==1,], aes(y = gsr_f_por_job,color='% of GSR female, minority'),size = 1) +
+  geom_line(data = df_sum1[df_sum1$minor_city ==1,], aes(y = gsr_m_por_job,color='% of GSR male, minority'),size = 1) +
+  geom_vline(aes(xintercept=2017, color = 'Two Child Policy'),size=1)+
+  labs(title = "% of Gender Specific Requirement (GSR) pooled, 2013-2020", x = "Year", y = "% of GSR Jobs", color = "Color")
+#  scale_color_manual(labels = c('% of gsr female, non-minority', '% of gsr male, non-minority'), values = c('navy', "darkred")) 
+
+minor
+```
+
+
+## Event Study
+
+```{r}
+## define function that draws event study plot
+event_plot = function(outvar_str,dataset) {
+  did.att.gt = att_gt(yname=outvar_str,
+                     tname="year",
+                    idname='X',
+                     gname="first.treat",
+                    panel = FALSE,
+                     data=dataset)
+  #summary(did.att.gt)
+  # aggregate them into event study plot
+  did.es <- aggte(did.att.gt, type="dynamic")
+
+  # plot the event study
+  ggdid(did.es)
+}
+```
+
+```{r}
+event_plot("gsr_m",df_wo_police)
+```
+
+
+
+# regressions
+
+## DID 
+
+### without interactions
+
+```{r}
+#define regression function
+lm_did = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$gsr_f
+    dep_var_1 = dataset_1$gsr_f_no
+  }else{
+    dep_var_0 = dataset_0$gsr_m
+    dep_var_1 = dataset_1$gsr_m_no
+  }
+  
+  #by jobs
+  gsr_lm0 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city + depar_job_no , data=dataset_0)
+  #gsr_lm1 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil, data=dataset)
+  #gsr_lm2 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) , data=dataset)
+  #gsr_lm3 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level), data=dataset)
+  gsr_lm4 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year)+ depar_job_no, data=dataset_0)
+  gsr_lm5 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng)+ depar_job_no, data=dataset_0)  
+  
+  
+  #by headcounts
+  gsr_no_lm0 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + depar_job_no, data=dataset_1)
+  gsr_no_lm4 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year)+ depar_job_no, data=dataset_1)
+  gsr_no_lm5 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng)+ depar_job_no, data=dataset_1)  
+  
+  #cluster standard error by province
+  gsr_lm0_se = coef(summary(gsr_lm0,cluster='region1'))[,2]
+  gsr_lm4_se = coef(summary(gsr_lm4,cluster='region1'))[,2]
+  gsr_lm5_se = coef(summary(gsr_lm5,cluster='region1'))[,2]
+  gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='region1'))[,2]
+  gsr_no_lm4_se = coef(summary(gsr_no_lm4,cluster='region1'))[,2]
+  gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='region1'))[,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm4, gsr_lm5, gsr_no_lm0, gsr_no_lm4, gsr_no_lm5,
+            se=list(gsr_lm0_se,gsr_lm4_se,gsr_lm5_se,gsr_no_lm0_se,gsr_no_lm4_se,gsr_no_lm5_se),
+            omit = c('Constant','region0_eng','year'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+### zero inflated and logit regression
+
+```{r}
+#define regression function
+probit_zeroinfl_did = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$gsr_f
+    dep_var_1 = dataset_1$gsr_f_no
+  }else{
+    dep_var_0 = dataset_0$gsr_m
+    dep_var_1 = dataset_1$gsr_m_no
+  }
+  
+  #by jobs
+  gsr_lm0 = glm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city ,
+                family = binomial(link = "probit"), data=dataset_0)
+  #gsr_lm1 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil, data=dataset)
+  #gsr_lm2 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) , data=dataset)
+  #gsr_lm3 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level), data=dataset)
+  gsr_lm4 = glm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year), 
+                family = binomial(link = "probit"), data=dataset_0)
+  gsr_lm5 = glm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng), 
+                family = binomial(link = "probit"), data=dataset_0)  
+  
+  
+  #by headcounts
+  gsr_no_lm0 = zeroinfl(formula = dep_var_1 ~  twocp:major_city + twocp + major_city,
+                        data=dataset_1)
+  gsr_no_lm4 = zeroinfl(formula = dep_var_1 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + + yr2014 + yr2015 + yr2016 + yr2017 + yr2018 + yr2019,
+                        data=dataset_1)
+  gsr_no_lm5 = zeroinfl(formula = dep_var_1 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + yr2014 + yr2015 + yr2016 + yr2017 + yr2018 + yr2019 + factor(region0_eng)
+                        , data=dataset_1)  
+  
+  #cluster standard error by province
+  gsr_lm0_se = coef(summary(gsr_lm0,cluster='region1'))[,2]
+  gsr_lm4_se = coef(summary(gsr_lm4,cluster='region1'))[,2]
+  gsr_lm5_se = coef(summary(gsr_lm5,cluster='region1'))[,2]
+  gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='region1'))[2][[1]][,2]
+  gsr_no_lm4_se = coef(summary(gsr_no_lm4,cluster='region1'))[2][[1]][,2]
+  gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='region1'))[2][[1]][,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm4, gsr_lm5, gsr_no_lm0, gsr_no_lm4, gsr_no_lm5,
+            se=list(gsr_lm0_se,gsr_lm4_se,gsr_lm5_se,gsr_no_lm0_se,gsr_no_lm4_se,gsr_no_lm5_se),
+            omit = c('Constant','region0_eng','year','yr2014','yr2015','yr2016','yr2017','yr2018','yr2019'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c("f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+
+```{r}
+#lm_gsr_f = lm_did('female', df_wo_police, df_wo_police_tibet)
+lm_gsr_m = lm_did('male', df_wo_police, df_wo_police_tibet)
+#probit_zeroinfl_gsr_f = probit_zeroinfl_did('female', df_wo_police, df_wo_police_tibet)
+#probit_zeroinfl_gsr_m = probit_zeroinfl_did('female', df_wo_police, df_wo_police_tibet)
+#lm_gsr_m = lm_did('male', df_wo_police, df_wo_police_tibet)
+```
+
+```{r}
+#zeroinfl_test = zeroinfl(formula = gsr_m_no ~ twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year), data=df_wo_police_tibet)
+#coef(summary(glm_test,cluster='region1'))#[,2]
+#hist(df_wo_police_tibet$gsr_f_no)
+#probitmfx(formula = gsr_m ~ twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + yr2014 + yr2015 + yr2016 + yr2017 + yr2018 + yr2019 + factor(region0_eng), data=df_wo_police)
+#zeroinfl_test = zeroinfl(formula = gsr_m_no ~ twocp:major_city + twocp + major_city + yr2014 + yr2015 + yr2016 + yr2017 + yr2018 + yr2019, data = df_wo_police_tibet)
+
+```
+
+### with interactions, heterogeneity
+
+```{r}
+ #define regression function
+ lm_did_wo_police_inter = function(dataset){
+   #female
+   #gsr_f_lm0 = lm(formula = gsr_f_no ~  twocp:major_city + twocp + major_city , data=dataset)
+   #gsr_lm1 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil, data=dataset)
+   #gsr_lm2 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) , data=dataset)
+   #gsr_lm3 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level), data=dataset)
+   gsr_f_lm4 = lm(formula = gsr_f ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + twocp:factor(ethnic) + factor(level) + twocp:factor(level) + factor(year), data=dataset)
+   gsr_f_lm5 = lm(formula = gsr_f ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + twocp:factor(ethnic) + factor(level) + twocp:factor(level) + factor(year) + factor(region0_eng), data=dataset)
+
+
+   #male
+   #gsr_m_lm0 = lm(formula = gsr_m_no ~  twocp:major_city + twocp + major_city , data=dataset)
+   gsr_m_lm4 = lm(formula = gsr_m ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + twocp:factor(ethnic) + factor(level) + twocp:factor(level) + factor(year), data=dataset)
+   gsr_m_lm5 = lm(formula = gsr_m ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + twocp:factor(ethnic) + factor(level) + twocp:factor(level) + factor(year) + factor(region0_eng), data=dataset)
+
+   #cluster standard error by province
+   #gsr_f_lm0_se = coef(summary(gsr_f_lm0,cluster='region1'))[,2]
+   gsr_f_lm4_se = coef(summary(gsr_f_lm4,cluster='region1'))[,2]
+   gsr_f_lm5_se = coef(summary(gsr_f_lm5,cluster='region1'))[,2]
+   #gsr_m_lm0_se = coef(summary(gsr_m_lm0,cluster='region1'))[,2]
+   gsr_m_lm4_se = coef(summary(gsr_m_lm4,cluster='region1'))[,2]
+   gsr_m_lm5_se = coef(summary(gsr_m_lm5,cluster='region1'))[,2]
+
+   #regression table setup
+   stargazer(gsr_f_lm4, gsr_f_lm5, gsr_m_lm4, gsr_m_lm5,
+             se=list(gsr_f_lm4_se,gsr_f_lm5_se,gsr_m_lm4_se,gsr_m_lm5_se),
+             omit = c('Constant','region0_eng','year'),
+             covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture','UTCP*ethnicity: Han','UTCP*ethnicity: minority','UTCP*level: prefecture[1]', 'UTCP*level: county[2]', 'UTCP*level: township[3]'),
+             omit.stat = c('rsq',"f",'ser'),
+             add.lines = list(c("Year Fixed effect", "Y", 'Y','Y','Y'),
+                            c("Province Fixed effect",  "N", 'Y','N','Y')),
+             style='aer',
+             title="UTCP and Gender Specific Requirement",
+             column.labels   = c("headcounts specify female", "headcounts specify male"),
+             column.separate = c(2, 2),
+             align=TRUE)
+ }
+```
+
+### add pre level control variables
+
+#### dependent variable at job level
+
+```{r}
+#define regression function
+lm_did_control = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$gsr_f
+    dep_var_1 = dataset_1$gsr_f_no
+  }else{
+    dep_var_0 = dataset_0$gsr_m
+    dep_var_1 = dataset_1$gsr_m_no
+  }
+  
+  #by jobs
+  gsr_lm0 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city , data=dataset_0)
+  #gsr_lm1 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil, data=dataset)
+  #gsr_lm2 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) , data=dataset)
+  #gsr_lm3 = lm(out_var ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level), data=dataset)
+  #gsr_lm4 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year)+ depar_job_no, data=dataset_0)
+  gsr_lm5 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng), data=dataset_0)  
+  gsr_lm6 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city +  non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng) + pop_total + pop_minority_ratio + avg_educ_total + no_elig_ratio, data=dataset_0)
+  
+  #by headcounts
+  gsr_no_lm0 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city, data=dataset_1)
+  #gsr_no_lm4 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year)+ depar_job_no, data=dataset_1)
+  gsr_no_lm5 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city  + non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng), data=dataset_1)
+  gsr_no_lm6 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city +  non_civil + factor(ethnic) + factor(level) + factor(year) + factor(region0_eng) + pop_total + pop_minority_ratio + avg_educ_total + no_elig_ratio, data=dataset_1)
+  
+  #cluster standard error by province
+  gsr_lm0_se = coef(summary(gsr_lm0,cluster='depar_total'))[,2]
+  gsr_lm5_se = coef(summary(gsr_lm5,cluster='depar_total'))[,2]
+  gsr_lm6_se = coef(summary(gsr_lm6,cluster='depar_total'))[,2]
+  gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='depar_total'))[,2]
+  gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='depar_total'))[,2]
+  gsr_no_lm6_se = coef(summary(gsr_no_lm6,cluster='depar_total'))[,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm5, gsr_lm6, gsr_no_lm0, gsr_no_lm5, gsr_no_lm6,
+            se=list(gsr_lm0_se,gsr_lm5_se,gsr_lm6_se,gsr_no_lm0_se,gsr_no_lm5_se,gsr_no_lm6_se),
+            omit = c('Constant','region0_eng','year'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "Y", 'Y','N','Y','Y'),
+                           c("Aggregate Control",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+#### dependent variable at department level 
+
+```{r}
+#define regression function
+lm_did_control_depar = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$depar_gsr_f_ratio
+    dep_var_1 = dataset_1$depar_gsr_f_no_ratio
+  }else{
+    dep_var_0 = dataset_0$depar_gsr_m_ratio
+    dep_var_1 = dataset_1$depar_gsr_m_no_ratio
+  }
+  
+  #by jobs
+  gsr_lm0 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city , data=dataset_0)
+  gsr_lm5 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + factor(level) + factor(year) + factor(region0_eng), data=dataset_0)  
+  gsr_lm6 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city + factor(level) + factor(year) + factor(region0_eng) + pop_total + pop_minority_ratio + avg_educ_total + no_elig_ratio, data=dataset_0)
+  
+  #by headcounts
+  gsr_no_lm0 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city, data=dataset_1)
+  gsr_no_lm5 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + factor(level) + factor(year) + factor(region0_eng), data=dataset_1)
+  gsr_no_lm6 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + factor(level) + factor(year) + factor(region0_eng) + pop_total + pop_minority_ratio + avg_educ_total + no_elig_ratio, data=dataset_1)
+  
+  #cluster standard error by province
+  # gsr_lm0_se = coef(summary(gsr_lm0,cluster='depar_total'))[,2]
+  # gsr_lm5_se = coef(summary(gsr_lm5,cluster='depar_total'))[,2]
+  # gsr_lm6_se = coef(summary(gsr_lm6,cluster='depar_total'))[,2]
+  # gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='depar_total'))[,2]
+  # gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='depar_total'))[,2]
+  # gsr_no_lm6_se = coef(summary(gsr_no_lm6,cluster='depar_total'))[,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm5, gsr_lm6, gsr_no_lm0, gsr_no_lm5, gsr_no_lm6,
+            #se=list(gsr_lm0_se,gsr_lm5_se,gsr_lm6_se,gsr_no_lm0_se,gsr_no_lm5_se,gsr_no_lm6_se),
+            omit = c('Constant','region0_eng','year','level'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "Y", 'Y','N','Y','Y'),
+                           c("Aggregate Control",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+#### dependent variable at prefecture level 
+
+```{r}
+#define regression function
+lm_did_control_pre = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$pre_gsr_f_ratio
+    dep_var_1 = dataset_1$pre_gsr_f_no_ratio
+  }else{
+    dep_var_0 = dataset_0$pre_gsr_m_ratio
+    dep_var_1 = dataset_1$pre_gsr_m_no_ratio
+  }
+  
+  #by jobs
+  gsr_lm0 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city , data=dataset_0)
+  gsr_lm5 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + factor(year) + factor(region0_eng), data=dataset_0)  
+  gsr_lm6 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city  + factor(year) + factor(region0_eng) + pop_total + pop_minority_ratio + avg_educ_total + no_elig_ratio, data=dataset_0)
+  
+  #by headcounts
+  gsr_no_lm0 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city, data=dataset_1)
+  gsr_no_lm5 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + factor(year) + factor(region0_eng), data=dataset_1)
+  gsr_no_lm6 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + factor(year) + factor(region0_eng) + pop_total + pop_minority_ratio + avg_educ_total + no_elig_ratio, data=dataset_1)
+  
+  #cluster standard error by province
+  # gsr_lm0_se = coef(summary(gsr_lm0,cluster='region1'))[,2]
+  # gsr_lm5_se = coef(summary(gsr_lm5,cluster='region1'))[,2]
+  # gsr_lm6_se = coef(summary(gsr_lm6,cluster='region1'))[,2]
+  # gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='region1'))[,2]
+  # gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='region1'))[,2]
+  # gsr_no_lm6_se = coef(summary(gsr_no_lm6,cluster='region1'))[,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm5, gsr_lm6, gsr_no_lm0, gsr_no_lm5, gsr_no_lm6,
+            #se=list(gsr_lm0_se,gsr_lm5_se,gsr_lm6_se,gsr_no_lm0_se,gsr_no_lm5_se,gsr_no_lm6_se),
+            omit = c('Constant','region0_eng','year'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "Y", 'Y','N','Y','Y'),
+                           c("Aggregate Control",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+```{r}
+#lm_gsr_f_control = lm_did_control('female', df_wo_police, df_wo_police_tibet)
+#lm_gsr_m_control = lm_did_control('male', df_wo_police, df_wo_police_tibet)
+#lm_gsr_f_control_depar = lm_did_control_depar('female', agg_depar, agg_depar)
+#lm_gsr_m_control_depar = lm_did_control_depar('male', agg_depar, agg_depar)
+lm_gsr_f_control_pre = lm_did_control_pre('female', agg_pre, agg_pre)
+#lm_gsr_m_control_pre = lm_did_control_pre('male', agg_depar, agg_depar)
+```
+```{r}
+hist(agg_pre$pre_gsr_m_ratio)
+```
+
+## event study DID
+
+### without police
+
+```{r}
+#define regression function
+lm_event_did = function(gender, dataset_0, dataset_1){
+  
+  if(gender == 'female'){
+    out_var_0 = dataset_0$gsr_f
+    out_var_1 = dataset_1$gsr_f_no
+  }else{
+    out_var_0 = dataset_0$gsr_m
+    out_var_1 = dataset_1$gsr_m_no
+  }
+  
+  gsr_cont_lm0 = lm(out_var_0 ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city, data=dataset_0)
+  #gsr_cont_lm1 removed because has police
+  #gsr_cont_lm2 = lm(out_var ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city +  non_civil + factor(ethnic), data=dataset)
+  gsr_cont_lm3 = lm(out_var_0 ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city +  non_civil + factor(ethnic) + factor(level), data=dataset_0)
+  #no lm4 because factor(twocp_cont) =  factor(year)
+  gsr_cont_lm5 = lm(out_var_0 ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city +  non_civil + factor(ethnic) + factor(level) + factor(region0_eng), data=dataset_0)
+
+  #by headcounts
+  gsr_cont_no_lm0 = lm(out_var_1 ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city, data=dataset_1)
+  gsr_cont_no_lm3 = lm(out_var_1 ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city +  non_civil + factor(ethnic) + factor(level), data=dataset_1)
+  gsr_cont_no_lm5 = lm(out_var_1 ~  factor(twocp_cont):major_city + factor(twocp_cont) + major_city +  non_civil + factor(ethnic) + factor(level) + factor(region0_eng), data=dataset_1)  
+  
+  
+  
+  #cluster standard error by province
+  gsr_cont_lm0_se = coef(summary(gsr_cont_lm0,cluster='region1'))[,2]
+  gsr_cont_lm3_se = coef(summary(gsr_cont_lm3,cluster='region1'))[,2]
+  gsr_cont_lm5_se = coef(summary(gsr_cont_lm5,cluster='region1'))[,2]
+  gsr_cont_no_lm0_se = coef(summary(gsr_cont_no_lm0,cluster='region1'))[,2]
+  gsr_cont_no_lm3_se = coef(summary(gsr_cont_no_lm3,cluster='region1'))[,2]
+  gsr_cont_no_lm5_se = coef(summary(gsr_cont_no_lm5,cluster='region1'))[,2]
+  
+  
+  #regression table setup
+  stargazer(gsr_cont_lm0, gsr_cont_lm3, gsr_cont_lm5, gsr_cont_no_lm0, gsr_cont_no_lm3, gsr_cont_no_lm5,
+            se=list(gsr_cont_lm0_se,gsr_cont_lm3_se,gsr_cont_lm5_se,
+                    gsr_cont_no_lm0_se,gsr_cont_no_lm3_se,gsr_cont_no_lm5_se),
+            omit = c('Constant','region0_eng','non_civil','ethnic','level'),
+            covariate.labels = c('-2','-1','0','1','2','3','4','majority prefecture',
+                                 '-2 year*majority prefecture','-1 year*majority prefecture',
+                                 '0 year*majority prefecture','1 year*majority prefecture',
+                                 '2 year*majority prefecture','3 year*majority prefecture',
+                                 '4 year*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "N", 'Y','N','N','Y'),
+                           c("Province Fixed effect",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+
+```{r}
+#lm_gsr_f = lm_event_did('female', df_wo_police, df_wo_police_tibet)
+lm_gsr_m = lm_event_did('male', df_wo_police, df_wo_police_tibet)
+```
+
+
+
+
+### triple difference: level of government
+
+```{r}
+#define regression function
+lm_ddd = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$depar_gsr_f_ratio
+    dep_var_1 = dataset_1$depar_gsr_f_no_ratio
+  }else{
+    dep_var_0 = dataset_0$depar_gsr_m_ratio
+    dep_var_1 = dataset_1$depar_gsr_m_no_ratio
+  }
+  
+  #by jobs
+  gsr_lm0 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city + base_level + base_level:major_city + base_level:twocp+ base_level:twocp:major_city , data=dataset_0)
+  gsr_lm5 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city + base_level + base_level:major_city + base_level:twocp+ base_level:twocp:major_city  + factor(year) + factor(region0_eng) + factor(level), data=dataset_0)
+  gsr_lm6 = lm(formula = dep_var_0 ~  twocp:major_city + twocp + major_city + base_level + base_level:major_city + base_level:twocp+ base_level:twocp:major_city  + factor(year) + factor(region0_eng) + pop_total + avg_educ_total + no_elig_ratio + factor(level), data=dataset_0) 
+  
+  
+  #by headcounts
+  gsr_no_lm0 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + base_level + base_level:major_city + base_level:twocp+ base_level:twocp:major_city , data=dataset_1)
+  gsr_no_lm5 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + base_level + base_level:major_city + base_level:twocp+ base_level:twocp:major_city  + factor(year) + factor(region0_eng)+ factor(level), data=dataset_1)  
+  gsr_no_lm6 = lm(formula = dep_var_1 ~  twocp:major_city + twocp + major_city + base_level + base_level:major_city + base_level:twocp+ base_level:twocp:major_city  + factor(year) + factor(region0_eng) + pop_total + avg_educ_total + no_elig_ratio+ factor(level), data=dataset_1)  
+  
+  #cluster standard error by province
+  gsr_lm0_se = coef(summary(gsr_lm0,cluster='depar_total'))[,2]
+  gsr_lm5_se = coef(summary(gsr_lm5,cluster='depar_total'))[,2]
+  gsr_lm6_se = coef(summary(gsr_lm6,cluster='depar_total'))[,2]
+  gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='depar_total'))[,2]
+  gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='depar_total'))[,2]
+  gsr_no_lm6_se = coef(summary(gsr_no_lm6,cluster='depar_total'))[,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm5, gsr_lm6, gsr_no_lm0, gsr_no_lm5, gsr_no_lm6,
+            se=list(gsr_lm0_se,gsr_lm5_se,gsr_lm6_se,gsr_no_lm0_se,gsr_no_lm5_se,gsr_no_lm6_se),
+            omit = c('Constant','region0_eng','year', 'pop_total','avg_educ_total'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+```{r}
+#define regression function
+lm_did_minor_ratio = function(gender,dataset_0, dataset_1){
+  if(gender == 'female'){
+    dep_var_0 = dataset_0$gsr_f
+    dep_var_1 = dataset_1$gsr_f_no
+  }else{
+    dep_var_0 = dataset_0$gsr_m
+    dep_var_1 = dataset_1$gsr_m_no
+  }
+  
+  #by jobs
+  gsr_lm0 = lm(formula = dep_var_0 ~  twocp:pop_minority_ratio + twocp +  pop_minority_ratio, data=dataset_0)
+  gsr_lm5 = lm(formula = dep_var_0 ~  twocp:pop_minority_ratio + twocp +  pop_minority_ratio+ non_civil + factor(ethnic) + factor(year) + factor(region0_eng) + factor(level), data=dataset_0)
+  gsr_lm6 = lm(formula = dep_var_0 ~  twocp:pop_minority_ratio + twocp +  pop_minority_ratio+ non_civil + factor(ethnic) + factor(year) + factor(region0_eng) + pop_total + avg_educ_total + no_elig_ratio + factor(level), data=dataset_0) 
+  
+  
+  #by headcounts
+  gsr_no_lm0 = lm(formula = dep_var_1 ~  twocp:pop_minority_ratio + twocp +  pop_minority_ratio, data=dataset_1)
+  gsr_no_lm5 = lm(formula = dep_var_1 ~  twocp:pop_minority_ratio + twocp +  pop_minority_ratio+ non_civil + factor(ethnic) + factor(year) + factor(region0_eng)+ factor(level), data=dataset_1)  
+  gsr_no_lm6 = lm(formula = dep_var_1 ~  twocp:pop_minority_ratio + twocp +  pop_minority_ratio+ non_civil + factor(ethnic) + factor(year) + factor(region0_eng) + pop_total + avg_educ_total + no_elig_ratio+ factor(level), data=dataset_1)  
+  
+  #cluster standard error by province
+  gsr_lm0_se = coef(summary(gsr_lm0,cluster='depar_total'))[,2]
+  gsr_lm5_se = coef(summary(gsr_lm5,cluster='depar_total'))[,2]
+  gsr_lm6_se = coef(summary(gsr_lm6,cluster='depar_total'))[,2]
+  gsr_no_lm0_se = coef(summary(gsr_no_lm0,cluster='depar_total'))[,2]
+  gsr_no_lm5_se = coef(summary(gsr_no_lm5,cluster='depar_total'))[,2]
+  gsr_no_lm6_se = coef(summary(gsr_no_lm6,cluster='depar_total'))[,2]
+  
+  #regression table setup
+  stargazer(gsr_lm0, gsr_lm5, gsr_lm6, gsr_no_lm0, gsr_no_lm5, gsr_no_lm6,
+            se=list(gsr_lm0_se,gsr_lm5_se,gsr_lm6_se,gsr_no_lm0_se,gsr_no_lm5_se,gsr_no_lm6_se),
+            omit = c('Constant','region0_eng','year', 'pop_total','avg_educ_total'),
+            #covariate.labels = c('majority prefecture','UTCP','pseudo civil servant','ethnicity: Han','ethnicity: minority','level: prefecture[1]', 'level: county[2]', 'level: township[3]','UTCP*majority prefecture'),
+            omit.stat = c('rsq',"f",'ser'),
+            add.lines = list(c("Year Fixed effect", "N", "Y", 'Y','N','Y','Y'),
+                           c("Province Fixed effect",  "N", "N", 'Y','N','N','Y')),
+            style='aer',
+            title= paste("UTCP and Gender Specific Requirement on", gender, sep=" "),
+            column.separate = c(3, 3),
+            column.labels   = c(paste("whether specifies", gender, sep=" "), paste("headcounts specify", gender, sep=" "),
+            align=TRUE))
+}
+```
+
+
+```{r}
+ddd_gsr_f = lm_ddd('female',agg_depar, agg_depar)
+#ddd_gsr_m = lm_ddd('male',agg_depar, agg_depar)
+
+#minor_ratio_gsr_f = lm_did_minor_ratio('female',df_wo_police, df_wo_police_tibet)
+#minor_ratio_gsr_m = lm_did_minor_ratio('male',df_wo_police, df_wo_police_tibet)
+```
+
+
+
+
+
+
+
+
